@@ -1,0 +1,26 @@
+{
+  "name": "relay-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Relay API - Microservices monorepo with API Gateway, Auth, Post, and Notification services",
+  "scripts": {
+    "dev:gateway": "pnpm --filter api-gateway dev",
+    "dev:auth": "pnpm --filter auth-service dev",
+    "dev:post": "pnpm --filter post-service dev",
+    "dev:notification": "pnpm --filter notification-service dev",
+    "dev:client": "pnpm --filter relay-client dev",
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean && rm -rf node_modules"
+  },
+  "keywords": [
+    "microservices",
+    "api",
+    "monorepo"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.2"
+  }
+}

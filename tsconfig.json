@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "es6", // Compile to modern JavaScript
+    "module": "commonjs", // Use standard Node.js modules
+    "outDir": "./dist", // Where to put compiled JS files
+    "rootDir": "./", // Where our TS files are
+    "strict": true, // Enable all strict type-checking
+    "esModuleInterop": true // Allows better compatibility for modules
+  }
+}
