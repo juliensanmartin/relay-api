@@ -90,9 +90,52 @@ app.all("/api/auth/*", async (req: Request, res: Response) => {
   }
 });
 
-// Post routes are protected. We apply the middleware here.
+// GET /api/posts is public (no authentication required)
+app.get("/api/posts", async (req: Request, res: Response) => {
+  req.log.info("Forwarding GET /api/posts request to Post Service (public)");
+  try {
+    const response = await postServiceBreaker.fire({
+      method: req.method,
+      url: `${POST_SERVICE_URL}${req.originalUrl}`,
+      data: req.body,
+    });
+    res.status(response.status).json(response.data);
+  } catch (error: any) {
+    res.status(error.response?.status || 500).json(error.response?.data || {});
+  }
+});
+
+// All other post routes are protected (POST /api/posts, upvotes, etc.)
+// Note: Using a more specific pattern to avoid catching the GET /api/posts above
+app.post(
+  "/api/posts",
+  authenticateToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    req.log.info(
+      `Forwarding POST /api/posts request to Post Service for user: ${req.user.userId}`
+    );
+    try {
+      const response = await postServiceBreaker.fire({
+        method: req.method,
+        url: `${POST_SERVICE_URL}${req.originalUrl}`,
+        data: req.body,
+        headers: {
+          "X-User-Id": req.user.userId,
+          "X-User-Name": req.user.username,
+        },
+      });
+      res.status(response.status).json(response.data);
+    } catch (error: any) {
+      res
+        .status(error.response?.status || 500)
+        .json(error.response?.data || {});
+    }
+  }
+);
+
+// Protected routes for upvoting (requires authentication)
 app.all(
-  "/api/posts*",
+  "/api/posts/:postId/*",
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response) => {
     req.log.info(
@@ -103,7 +146,6 @@ app.all(
         method: req.method,
         url: `${POST_SERVICE_URL}${req.originalUrl}`,
         data: req.body,
-        // Add the user's ID and username as custom headers for the Post Service
         headers: {
           "X-User-Id": req.user.userId,
           "X-User-Name": req.user.username,
