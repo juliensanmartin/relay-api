@@ -8,10 +8,12 @@ import postServiceBreaker from "./circuit-breaker";
 import apiClient from "./apiClient";
 
 const app = express();
-const port = 5000;
+const port = process.env.PORT || 5000;
 
-const AUTH_SERVICE_URL = "http://localhost:5001";
-const POST_SERVICE_URL = "http://localhost:5002";
+const AUTH_SERVICE_URL =
+  process.env.AUTH_SERVICE_URL || "http://localhost:5001";
+const POST_SERVICE_URL =
+  process.env.POST_SERVICE_URL || "http://localhost:5002";
 
 const JWT_SECRET = process.env.JWT_SECRET || "default-secret";
 

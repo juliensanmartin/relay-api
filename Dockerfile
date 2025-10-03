@@ -1,22 +1,31 @@
-# 1. Start with a base image that has Node.js installed
+# Multi-service Dockerfile for pnpm workspace
 FROM node:22-alpine
 
-# 2. Set the working directory inside the container
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Set the working directory
 WORKDIR /app
 
-# 3. Copy package files and install dependencies
-# This is done separately to leverage Docker's layer caching
-COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install
+# Copy workspace configuration files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.json ./
 
-# 4. Copy the rest of the application code
-COPY . .
+# Copy all packages and services (for workspace dependencies)
+COPY packages ./packages
+COPY services ./services
 
-# 5. Build the TypeScript code into JavaScript
-RUN pnpm build
+# Install all dependencies
+RUN pnpm install --frozen-lockfile
 
-# 6. Expose the port the app runs on
-EXPOSE 5000
+# Build the tracing package if it exists
+RUN cd packages/tracing && pnpm build || true
 
-# 7. The command to run when the container starts
-CMD [ "node", "dist/index.js" ]
+# Accept SERVICE_PATH as a build argument
+ARG SERVICE_PATH
+ENV SERVICE_PATH=${SERVICE_PATH}
+
+# Set working directory to the specific service
+WORKDIR /app/${SERVICE_PATH}
+
+# The command to run when the container starts
+CMD ["pnpm", "start"]

@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "description": "Handles user authentication and management.",
   "main": "src/index.ts",
+  "type": "commonjs",
   "scripts": {
-    "start": "ts-node src/index.ts",
-    "dev": "nodemon src/index.ts | pino-pretty"
+    "start": "ts-node --require ./node_modules/@relay/tracing/dist/index.js --transpile-only src/index.ts",
+    "dev": "SERVICE_NAME=api-gateway nodemon --exec 'ts-node --require ./node_modules/@relay/tracing/dist/index.js' src/index.ts | pino-pretty"
   },
   "dependencies": {
+    "@relay/tracing": "workspace:^",
     "axios": "^1.12.2",
     "axios-retry": "^4.5.0",
     "cors": "^2.8.5",

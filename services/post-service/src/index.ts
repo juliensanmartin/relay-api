@@ -1,26 +1,20 @@
+// packages/post-service/src/index.ts
+
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import { Pool } from "pg";
 import { pinoHttp } from "pino-http";
+import client from "prom-client"; // 👈 Import prom-client
 
 const app = express();
 const port = 5002;
 
-// --- Logger Middleware ---
-// This configuration prioritizes the incoming request ID from the API Gateway
+// ... (your existing pinoHttp logger middleware setup)
 const loggerMiddleware = pinoHttp({
-  // 👇 This is the key change
   genReqId: function (req, res) {
-    // Use the id from the request header if present
     const requestId = req.headers["x-request-id"];
-    if (typeof requestId === "string") {
-      return requestId;
-    }
-    // If header is array, use first value; otherwise let pino generate one
-    if (Array.isArray(requestId) && requestId.length > 0) {
-      return requestId[0];
-    }
-    // Return undefined to let pino-http generate a default ID
+    if (typeof requestId === "string") return requestId;
+    if (Array.isArray(requestId) && requestId.length > 0) return requestId[0];
     return undefined as any;
   },
   customLogLevel: function (req, res, err) {
@@ -31,6 +25,36 @@ const loggerMiddleware = pinoHttp({
 });
 app.use(loggerMiddleware);
 
+// =================================================================
+// METRICS CONFIGURATION
+// =================================================================
+const register = new client.Registry();
+register.setDefaultLabels({ app: "relay-post-service" });
+client.collectDefaultMetrics({ register });
+
+const httpRequestDurationMicroseconds = new client.Histogram({
+  name: "http_request_duration_ms",
+  help: "Duration of HTTP requests in ms",
+  labelNames: ["method", "route", "code"],
+  buckets: [50, 100, 200, 300, 400, 500, 1000],
+});
+register.registerMetric(httpRequestDurationMicroseconds);
+
+// =================================================================
+// MIDDLEWARES
+// =================================================================
+app.use(express.json());
+
+// This middleware captures metrics for all subsequent routes
+app.use((req, res, next) => {
+  const end = httpRequestDurationMicroseconds.startTimer();
+  res.on("finish", () => {
+    const route = req.route ? req.route.path : req.path;
+    end({ route, code: res.statusCode, method: req.method });
+  });
+  next();
+});
+
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -39,13 +63,22 @@ const pool = new Pool({
   port: parseInt(process.env.DB_PORT || "5432"),
 });
 
-app.use(express.json());
-
+// =================================================================
+// ROUTES
+// =================================================================
 app.get("/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "UP" });
 });
 
+// 👇 DEFINE THE /metrics ROUTE
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
+
 // === POSTS ENDPOINTS ===
+// ... (Your existing post-related routes: /api/posts, /api/posts/:postId/upvote, etc.)
+// ... they remain unchanged ...
 
 app.post("/api/posts", async (req: Request, res: Response) => {
   try {

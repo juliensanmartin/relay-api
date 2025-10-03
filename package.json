@@ -4,11 +4,12 @@
   "version": "1.0.0",
   "description": "Relay API - Microservices monorepo with API Gateway, Auth, Post, and Notification services",
   "scripts": {
-    "dev:gateway": "pnpm --filter api-gateway dev",
-    "dev:auth": "pnpm --filter auth-service dev",
-    "dev:post": "pnpm --filter post-service dev",
-    "dev:notification": "pnpm --filter notification-service dev",
-    "dev:client": "pnpm --filter relay-client dev",
+    "dev": "concurrently -k -n \"DOCKER,GATEWAY,AUTH,POST,NOTIFY,CLIENT\" -c \"auto\" \"docker compose up\" \"pnpm dev:gateway\" \"pnpm dev:auth\" \"pnpm dev:post\" \"pnpm dev:notification\" \"pnpm dev:client\"",
+    "dev:gateway": "pnpm --filter @relay/api-gateway dev",
+    "dev:auth": "pnpm --filter @relay/auth-service dev",
+    "dev:post": "pnpm --filter @relay/post-service dev",
+    "dev:notification": "pnpm --filter @relay/notification-service dev",
+    "dev:client": "pnpm --filter @relay/relay-client dev",
     "build": "pnpm -r build",
     "clean": "pnpm -r clean && rm -rf node_modules"
   },
@@ -21,6 +22,7 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^24.6.0",
+    "concurrently": "^9.2.1",
     "typescript": "^5.9.2"
   }
 }

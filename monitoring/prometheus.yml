@@ -1,0 +1,22 @@
+# prometheus.yml
+global:
+  scrape_interval: 15s # How frequently to scrape targets
+
+scrape_configs:
+  # Scrape metrics from the auth-service
+  - job_name: "auth-service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["auth-service:5001"]
+
+  # Scrape metrics from the post-service
+  - job_name: "post-service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["post-service:5002"]
+
+  # Scrape metrics from the notification-service
+  - job_name: "notification-service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["notification-service:5003"]
