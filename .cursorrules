@@ -1,0 +1,608 @@
+# Relay API - Architecture & Development Rules
+
+## 🏗️ Core Architecture
+
+- **Pattern:** Microservices with API Gateway
+- **Communication:** Synchronous (HTTP via API Gateway) + Asynchronous (RabbitMQ events)
+- **Database:** PostgreSQL 15 (relay_db) - single shared database
+- **Message Broker:** RabbitMQ 3.11
+- **Observability:** Jaeger (tracing) + Prometheus (metrics) + Grafana (dashboards) + Pino (logging)
+- **Deployment:** Docker Compose for local development
+
+### Service Ports
+
+- API Gateway: 5000
+- Auth Service: 5001
+- Post Service: 5002
+- Notification Service: 5003
+- React Client: 5173
+
+### Infrastructure Ports
+
+- PostgreSQL: 5432
+- RabbitMQ: 5672 (AMQP), 15672 (Management UI)
+- Jaeger: 16686 (UI)
+- Prometheus: 9090
+- Grafana: 3009
+
+---
+
+## 📦 Service Structure Standards
+
+### Directory Structure
+
+```
+services/{service-name}/
+├── src/
+│   └── index.ts          # Entry point
+├── package.json
+├── tsconfig.json
+└── .env                  # Environment variables
+```
+
+### Backend Service Template (Express.js + TypeScript)
+
+- Entry point: `src/index.ts`
+- Framework: Express.js
+- Language: TypeScript 5.x (strict mode)
+- Runtime: Node.js 22+
+- Logging: Pino (structured JSON logging)
+- Metrics: prom-client (expose `/metrics` endpoint)
+- Tracing: OpenTelemetry auto-instrumentation
+- Package Manager: pnpm (monorepo workspace)
+
+### Required Endpoints for All Services
+
+- `GET /health` - Health check endpoint
+- `GET /metrics` - Prometheus metrics endpoint
+
+---
+
+## 🗄️ Database Patterns
+
+### PostgreSQL Standards
+
+- **Connection:** Use `pg` library with connection pooling
+- **Queries:** ALWAYS use parameterized queries (prevent SQL injection)
+
+  ```typescript
+  // CORRECT
+  await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
+
+  // NEVER DO THIS
+  await pool.query(`SELECT * FROM users WHERE id = ${userId}`);
+  ```
+
+- **Schema:** Centralized in `/db.sql`
+- **Credentials:** relay/relay (local dev)
+- **Timestamps:** Always include `created_at` column (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+- **Transactions:** Use when multiple operations must be atomic
+
+### Connection Configuration
+
+```typescript
+const pool = new Pool({
+  host: process.env.DB_HOST || "localhost",
+  port: parseInt(process.env.DB_PORT || "5432"),
+  user: process.env.DB_USER || "relay",
+  password: process.env.DB_PASSWORD || "relay",
+  database: process.env.DB_DATABASE || "relay_db",
+});
+```
+
+---
+
+## 🔄 Event-Driven Architecture (RabbitMQ)
+
+### Queue Naming Convention
+
+- Format: `{entity}_events`
+- Examples: `user_events`, `post_events`, `comment_events`
+
+### Publisher Pattern (Auth Service example)
+
+```typescript
+const channel = await connection.createChannel();
+await channel.assertQueue("user_events", { durable: true });
+channel.sendToQueue("user_events", Buffer.from(JSON.stringify(event)));
+```
+
+### Consumer Pattern (Notification Service example)
+
+```typescript
+await channel.assertQueue("user_events", { durable: true });
+channel.consume("user_events", async (msg) => {
+  if (msg) {
+    const event = JSON.parse(msg.content.toString());
+    // Process event
+    channel.ack(msg); // ALWAYS acknowledge after processing
+  }
+});
+```
+
+### Event Structure
+
+```typescript
+interface Event {
+  type: string; // e.g., 'user.registered', 'post.created'
+  timestamp: string; // ISO 8601 format
+  data: Record<string, any>;
+}
+```
+
+### Best Practices
+
+- Always acknowledge messages after successful processing
+- Use durable queues for persistence
+- Include error handling and dead-letter queues for failures
+- Log event processing with Pino
+
+---
+
+## 🚪 API Gateway Responsibilities
+
+### Primary Functions
+
+1. **Authentication:** Validate JWT tokens for protected routes
+2. **Routing:** Forward requests to appropriate microservices
+3. **Resilience:** Circuit breaker (Opossum) + retry logic with exponential backoff
+4. **Security:** CORS handling
+5. **Observability:** Request tracing and metrics
+
+### Route Pattern
+
+- Format: `/api/{service}/{resource}`
+- Examples:
+  - `/api/auth/users` → Auth Service
+  - `/api/auth/login` → Auth Service
+  - `/api/posts` → Post Service
+  - `/api/posts/:id/upvote` → Post Service
+
+### Circuit Breaker Configuration (Opossum)
+
+- Timeout: 3000ms
+- Error threshold: 50%
+- Reset timeout: 30000ms
+- Rolling window: 10 requests
+
+### Service URLs (Environment Variables)
+
+```bash
+AUTH_SERVICE_URL=http://auth-service:5001
+POST_SERVICE_URL=http://post-service:5002
+```
+
+### JWT Validation Middleware
+
+- Extract token from `Authorization: Bearer {token}` header
+- Verify with JWT_SECRET
+- Attach decoded user data to `req.user`
+- Return 401 if invalid/expired
+
+---
+
+## 🔐 Authentication & Security
+
+### JWT Standards
+
+- **Algorithm:** HS256
+- **Expiration:** 1 hour
+- **Secret:** Environment variable `JWT_SECRET` (NEVER hardcode)
+- **Payload:** `{ userId, email }` (minimal data)
+
+### Password Security
+
+- **Hashing:** bcrypt
+- **Salt Rounds:** 10
+- **Storage:** NEVER store plaintext passwords
+
+```typescript
+const hashedPassword = await bcrypt.hash(password, 10);
+const isValid = await bcrypt.compare(password, hashedPassword);
+```
+
+### Security Checklist
+
+- ✅ Use parameterized queries (SQL injection prevention)
+- ✅ JWT token expiration (1 hour)
+- ✅ bcrypt password hashing
+- ✅ CORS configured in API Gateway
+- ❌ HTTPS/TLS not yet implemented (local dev uses HTTP)
+- ❌ Rate limiting not yet implemented
+- ❌ Secrets management (Vault/KMS) not yet implemented
+
+### Logging Security
+
+- NEVER log passwords, tokens, or sensitive data
+- Sanitize user input in logs
+- Use Pino's built-in redaction if needed
+
+---
+
+## ⚛️ Frontend Standards (React)
+
+### Stack
+
+- React 18
+- TypeScript
+- Vite 7 (build tool)
+- Tailwind CSS v4 (styling)
+- Axios (HTTP client)
+
+### Directory Structure
+
+```
+services/relay-client/src/
+├── components/      # Reusable UI components
+├── pages/          # Page components
+├── types.ts        # TypeScript interfaces
+├── App.tsx         # Main app component
+└── main.tsx        # Entry point
+```
+
+### API Communication
+
+- **All requests go through API Gateway** (http://localhost:5000)
+- Store JWT token in `localStorage.getItem('token')`
+- Include token in Authorization header:
+  ```typescript
+  headers: {
+    Authorization: `Bearer ${token}`;
+  }
+  ```
+
+### Component Standards
+
+- Use functional components with hooks
+- TypeScript interfaces for props
+- Tailwind CSS for styling (no CSS files)
+
+### Current Gaps
+
+- ❌ No state management library (React Query/SWR/Zustand needed)
+- ❌ No error tracking (Sentry)
+- ❌ No testing (Vitest/Playwright)
+- ❌ No code splitting or lazy loading
+
+---
+
+## 📊 Observability (MANDATORY for All Services)
+
+### 1. Distributed Tracing (Jaeger + OpenTelemetry)
+
+**Setup in every service:**
+
+```typescript
+import { setupTracing } from "@relay/tracing";
+setupTracing(process.env.SERVICE_NAME || "unknown-service");
+```
+
+**Auto-instrumented:**
+
+- HTTP requests (Express)
+- Database queries (PostgreSQL)
+- HTTP client calls (Axios)
+
+**View traces:** http://localhost:16686
+
+### 2. Metrics (Prometheus)
+
+**Required for every service:**
+
+- Expose `/metrics` endpoint using `prom-client`
+- Default metrics: HTTP requests, response times, error rates
+- Custom metrics: Business-specific counters/histograms
+
+**Prometheus scrapes every 15 seconds**
+
+**View metrics:** http://localhost:9090
+
+### 3. Logging (Pino)
+
+**Standards:**
+
+```typescript
+import pino from "pino";
+const logger = pino({ level: "info" });
+
+// Use structured logging
+logger.info({ userId, action: "login" }, "User logged in");
+logger.error({ err, userId }, "Login failed");
+```
+
+**Log Levels:**
+
+- `info` - Normal operations
+- `warn` - Potential issues
+- `error` - Errors that need attention
+- `debug` - Development debugging (not in production)
+
+### 4. Grafana Dashboards
+
+**Access:** http://localhost:3009 (admin/admin)
+**Data Source:** Prometheus (pre-configured)
+
+---
+
+## 🛠️ Development Standards
+
+### TypeScript
+
+- **Strict mode:** Enabled in all tsconfig.json
+- **Target:** ES2020
+- **Module:** CommonJS (for Node.js compatibility)
+- **Interfaces over types** for object shapes
+- Always define types for function parameters and return values
+
+### Package Management
+
+- **Tool:** pnpm (NOT npm or yarn)
+- **Monorepo:** Workspace configured in `/pnpm-workspace.yaml`
+- **Shared packages:** Place in `/packages/` (e.g., `@relay/tracing`)
+
+### Environment Variables
+
+- Store in `.env` files (NOT committed to git)
+- Use `process.env.VARIABLE_NAME` with fallback defaults
+- Required variables should be documented in README
+
+### Error Handling
+
+```typescript
+try {
+  // Operation
+} catch (error) {
+  logger.error({ err: error }, "Operation failed");
+  res.status(500).json({ error: "Internal server error" });
+}
+```
+
+### Docker Standards
+
+- Use `docker-compose.yml` for orchestration
+- Health checks for all services
+- Use official base images (node:22-alpine, postgres:15, etc.)
+- Multi-stage builds where applicable
+
+---
+
+## ➕ Checklist for Adding New Services
+
+When creating a new microservice:
+
+1. **Create Service Directory**
+
+   - [ ] Create `/services/{service-name}/` directory
+   - [ ] Add `src/index.ts` entry point
+   - [ ] Add `package.json` with dependencies
+   - [ ] Add `tsconfig.json` (copy from existing service)
+
+2. **Implement Core Functionality**
+
+   - [ ] Set up Express server
+   - [ ] Add OpenTelemetry tracing (`setupTracing()`)
+   - [ ] Add Pino structured logging
+   - [ ] Add Prometheus metrics endpoint (`GET /metrics`)
+   - [ ] Add health check endpoint (`GET /health`)
+
+3. **Database Integration (if needed)**
+
+   - [ ] Add PostgreSQL connection pool
+   - [ ] Use parameterized queries ONLY
+   - [ ] Update `/db.sql` with new schema
+
+4. **Event Integration (if needed)**
+
+   - [ ] Connect to RabbitMQ
+   - [ ] Create/consume from appropriate queues
+   - [ ] Use durable queues
+   - [ ] Implement proper acknowledgment
+
+5. **Update Infrastructure**
+
+   - [ ] Add service to `docker-compose.yml`
+   - [ ] Add to Prometheus scrape config (`monitoring/prometheus.yml`)
+   - [ ] Add environment variables
+   - [ ] Add health check in Docker Compose
+
+6. **Update API Gateway**
+
+   - [ ] Add routing logic for new service
+   - [ ] Add circuit breaker configuration
+   - [ ] Add service URL environment variable
+
+7. **Documentation**
+
+   - [ ] Update README.md with service description
+   - [ ] Document API endpoints
+   - [ ] Add to architecture diagram
+
+8. **Testing** (once testing framework is added)
+   - [ ] Add unit tests
+   - [ ] Add integration tests
+   - [ ] Verify in Jaeger tracing
+
+---
+
+## 🎯 Current Architecture Gaps (Priority Order)
+
+### Critical Gaps
+
+1. **No Redis Caching**
+
+   - Need: Cache-Aside pattern for frequently accessed data (e.g., popular posts)
+   - Impact: Database load reduction, faster response times
+
+2. **No Testing**
+
+   - Need: Vitest (unit/integration) + Playwright (E2E)
+   - Impact: Code quality, regression prevention
+
+3. **No Frontend State Management**
+
+   - Need: React Query or SWR for server state
+   - Impact: Better UX, reduced API calls, optimistic updates
+
+4. **No Rate Limiting**
+
+   - Need: Token bucket algorithm in API Gateway
+   - Impact: API abuse prevention, DoS protection
+
+5. **No Load Balancing**
+   - Need: NGINX in front of multiple API Gateway instances
+   - Impact: Horizontal scaling, high availability
+
+### Medium Priority
+
+6. **No Database Replication** - Read replicas for scaling reads
+7. **No HTTPS/TLS** - Secure communication
+8. **No Frontend Error Tracking** - Sentry for client-side errors
+9. **No Secrets Management** - HashiCorp Vault or AWS KMS
+10. **No NoSQL Databases** - Redis for caching, MongoDB for flexible schemas
+
+### Learning Opportunities
+
+11. **No Service Mesh** - Istio/Linkerd for advanced microservices
+12. **No Distributed Locking** - Redis/etcd for coordination
+13. **No Stream Processing** - Kafka for high-throughput events
+14. **No Database Sharding** - Horizontal database scaling
+
+---
+
+## 🚀 When Building New Features
+
+### Always Include
+
+1. **Observability**
+
+   - OpenTelemetry tracing
+   - Prometheus metrics
+   - Structured logging with Pino
+
+2. **Error Handling**
+
+   - Try-catch blocks
+   - Proper HTTP status codes
+   - Error logging
+
+3. **Security**
+
+   - JWT validation (if protected route)
+   - Input validation
+   - Parameterized queries
+
+4. **Documentation**
+   - Update README.md
+   - Add code comments for complex logic
+   - Document API endpoints
+
+### Should Include (once implemented)
+
+5. **Tests** - Unit + integration tests
+6. **Caching** - Redis for frequently accessed data
+7. **Rate Limiting** - Prevent abuse
+
+---
+
+## 📚 Technology Stack Reference
+
+### Backend
+
+- **Runtime:** Node.js 22+
+- **Language:** TypeScript 5.x
+- **Framework:** Express.js
+- **Database:** PostgreSQL 15 (pg driver)
+- **Message Queue:** RabbitMQ 3.11 (amqplib)
+- **Auth:** JWT (jsonwebtoken)
+- **Password:** bcrypt
+- **Logging:** Pino
+- **Metrics:** prom-client
+- **Tracing:** OpenTelemetry (@opentelemetry/auto-instrumentations-node)
+- **Circuit Breaker:** Opossum
+
+### Frontend
+
+- **Framework:** React 18
+- **Build:** Vite 7
+- **Language:** TypeScript
+- **Styling:** Tailwind CSS v4
+- **HTTP:** Axios
+
+### Infrastructure
+
+- **Container:** Docker + Docker Compose
+- **Package Manager:** pnpm (workspace)
+- **Database:** PostgreSQL 15
+- **Message Broker:** RabbitMQ 3.11
+- **Tracing:** Jaeger 1.53
+- **Metrics:** Prometheus 2.47
+- **Dashboards:** Grafana 10.1
+
+---
+
+## 💡 Architectural Decisions & Rationale
+
+### Why Microservices?
+
+- Independent scaling of services
+- Technology flexibility
+- Fault isolation
+- Team autonomy
+
+### Why API Gateway?
+
+- Single entry point for clients
+- Centralized authentication
+- Service abstraction
+- Circuit breaker & retry logic
+
+### Why RabbitMQ (not Kafka)?
+
+- Simpler setup for learning
+- Sufficient for current scale
+- Good for task queues
+- (Future: migrate to Kafka for high-throughput stream processing)
+
+### Why Shared PostgreSQL (not per-service databases)?
+
+- Simplicity for learning project
+- ACID transactions across entities
+- (Future: consider separate databases for true service independence)
+
+### Why OpenTelemetry?
+
+- Vendor-neutral
+- Auto-instrumentation (minimal code changes)
+- Industry standard
+- Future-proof
+
+---
+
+## 🎓 Learning Path Status
+
+**Current Progress:** ~40% of full learning path complete
+
+**Mastered:**
+
+- Microservices fundamentals
+- Event-driven architecture
+- API Gateway pattern
+- Fault tolerance basics (circuit breaker, retry)
+- Full observability stack
+
+**Next Learning Goals:**
+
+1. Caching strategies (Redis)
+2. Testing strategies (unit, integration, E2E)
+3. Horizontal scaling & load balancing
+4. Advanced state management (React Query)
+5. Rate limiting algorithms
+
+---
+
+## 📖 Additional Resources
+
+- **Learning Path:** See `/LEARNING_PATH.md` for comprehensive roadmap
+- **Setup Guide:** See `/README.md` for architecture & API documentation
+- **Database Schema:** See `/db.sql`
+- **Prometheus Config:** See `/monitoring/prometheus.yml`
