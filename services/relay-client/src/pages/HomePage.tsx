@@ -1,52 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import Header from "../components/Header";
 import PostList from "../components/PostList";
 import CreatePostForm from "../components/CreatePostForm";
-import type { Post } from "../types";
-
-const API_BASE_URL = "http://localhost:5000";
+import { usePosts } from "../hooks/usePosts";
+import { useCreatePost } from "../hooks/useCreatePost";
+import { useUpvote } from "../hooks/useUpvote";
+import { useLogout } from "../hooks/useAuth";
+import {
+  getAuthToken,
+  isAuthError,
+  isConflictError,
+  getErrorMessage,
+} from "../lib/apiClient";
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem("token")
-  );
-  const [posts, setPosts] = useState<Post[]>([]);
+  const token = getAuthToken();
   const [error, setError] = useState<string>("");
-  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // An axios instance with the auth header
-  const api = axios.create({
-    baseURL: API_BASE_URL,
-    headers: {
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  });
-
-  // Fetch posts on mount
-  useEffect(() => {
-    fetchPosts();
-  }, []);
-
-  const fetchPosts = async () => {
-    try {
-      setIsLoading(true);
-      // No authentication needed to fetch posts
-      const response = await axios.get<Post[]>(`${API_BASE_URL}/api/posts`);
-      setPosts(response.data);
-      setError("");
-    } catch {
-      setError("Failed to fetch posts.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // React Query hooks
+  const { data: posts = [], isLoading, error: postsError } = usePosts();
+  const createPostMutation = useCreatePost();
+  const upvoteMutation = useUpvote();
+  const logout = useLogout();
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    setToken(null);
+    logout();
   };
 
   const handleCreatePost = async (title: string, url: string) => {
@@ -55,13 +35,15 @@ export default function HomePage() {
       navigate("/login");
       return;
     }
+
     try {
-      await api.post("/api/posts", { title, url });
-      fetchPosts(); // Refresh the list after creating a post
+      await createPostMutation.mutateAsync({ title, url });
       setError("");
     } catch (err) {
-      setError("Failed to create post. Please try logging in again.");
-      if (axios.isAxiosError(err) && err.response?.status === 401) {
+      const message = getErrorMessage(err);
+      setError(`Failed to create post: ${message}`);
+
+      if (isAuthError(err)) {
         handleLogout();
         navigate("/login");
       }
@@ -74,36 +56,39 @@ export default function HomePage() {
       navigate("/login");
       return;
     }
+
     try {
-      await api.post(`/api/posts/${postId}/upvote`);
-      // Optimistically update the UI for a better user experience
-      setPosts(
-        posts.map((p) =>
-          p.id === postId ? { ...p, upvote_count: p.upvote_count + 1 } : p
-        )
-      );
+      await upvoteMutation.mutateAsync(postId);
       setError("");
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        if (err.response?.status === 409) {
-          setError("You have already upvoted this post.");
-        } else if (err.response?.status === 401) {
-          setError("Session expired. Please log in again.");
-          handleLogout();
-          navigate("/login");
-        } else {
-          setError("Failed to upvote post.");
-        }
+      if (isConflictError(err)) {
+        setError("You have already upvoted this post.");
+      } else if (isAuthError(err)) {
+        setError("Session expired. Please log in again.");
+        handleLogout();
+        navigate("/login");
       } else {
-        setError("Failed to upvote post.");
+        setError(`Failed to upvote: ${getErrorMessage(err)}`);
       }
     }
   };
 
+  // Show loading state
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
-        Loading...
+        <div className="text-lg text-gray-600">Loading posts...</div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (postsError) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="text-lg text-red-600">
+          Failed to load posts. Please refresh the page.
+        </div>
       </div>
     );
   }
@@ -129,7 +114,12 @@ export default function HomePage() {
 
       {token && <CreatePostForm onCreate={handleCreatePost} />}
 
-      <PostList posts={posts} onUpvote={handleUpvote} isLoggedIn={!!token} />
+      <PostList
+        posts={posts}
+        onUpvote={handleUpvote}
+        isLoggedIn={!!token}
+        isUpvoting={upvoteMutation.isPending}
+      />
     </div>
   );
 }

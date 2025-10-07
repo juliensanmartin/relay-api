@@ -4,8 +4,11 @@ import jwt from "jsonwebtoken";
 import cors from "cors";
 import { pinoHttp } from "pino-http";
 import { randomUUID } from "crypto";
+import { createRedisClient } from "@relay/cache";
 import postServiceBreaker from "./circuit-breaker";
 import apiClient from "./apiClient";
+import { createRateLimitMiddleware } from "./rate-limiter";
+import { register } from "prom-client";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -16,6 +19,11 @@ const POST_SERVICE_URL =
   process.env.POST_SERVICE_URL || "http://localhost:5002";
 
 const JWT_SECRET = process.env.JWT_SECRET || "default-secret";
+
+// =================================================================
+// REDIS CLIENT INITIALIZATION
+// =================================================================
+createRedisClient(); // Initialize Redis for rate limiting
 
 // =================================================================
 // LOGGER MIDDLEWARE
@@ -47,6 +55,33 @@ interface AuthenticatedRequest extends Request {
 }
 
 // =================================================================
+// OPTIONAL JWT EXTRACTION (for rate limiting)
+// =================================================================
+// This middleware extracts JWT without enforcing it
+// This allows the rate limiter to apply per-user limits when possible
+app.use((req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (token) {
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      // Invalid token - don't block, just don't attach user
+      // The authenticateToken middleware will handle enforcement later
+    }
+  }
+  next();
+});
+
+// =================================================================
+// RATE LIMITING MIDDLEWARE
+// =================================================================
+// Apply rate limiting to all routes (configured per-endpoint)
+// This runs AFTER optional JWT extraction so it can use req.user if available
+app.use(createRateLimitMiddleware());
+
+// =================================================================
 // AUTHENTICATION MIDDLEWARE
 // =================================================================
 const authenticateToken = (
@@ -69,6 +104,18 @@ const authenticateToken = (
     next();
   });
 };
+
+// =================================================================
+// HEALTH & METRICS ENDPOINTS
+// =================================================================
+app.get("/health", (req: Request, res: Response) => {
+  res.status(200).json({ status: "ok", service: "api-gateway" });
+});
+
+app.get("/metrics", async (req: Request, res: Response) => {
+  res.setHeader("Content-Type", register.contentType);
+  res.send(await register.metrics());
+});
 
 // =================================================================
 // ROUTING

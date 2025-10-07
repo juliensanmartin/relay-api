@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
-
-const API_BASE_URL = "http://localhost:5000";
+import { useRegister, useLogin } from "../hooks/useAuth";
+import { getErrorMessage } from "../lib/apiClient";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -12,37 +11,31 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  // React Query hooks
+  const registerMutation = useRegister();
+  const loginMutation = useLogin();
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const url = isRegister ? "/api/auth/users" : "/api/auth/login";
-    const payload = isRegister
-      ? { username, email, password }
-      : { email, password };
+    setError("");
 
     try {
-      const response = await axios.post(`${API_BASE_URL}${url}`, payload);
       if (isRegister) {
-        // After registering, automatically log in
-        const loginResponse = await axios.post(
-          `${API_BASE_URL}/api/auth/login`,
-          { email, password }
-        );
-        localStorage.setItem("token", loginResponse.data.token);
+        await registerMutation.mutateAsync({ username, email, password });
       } else {
-        localStorage.setItem("token", response.data.token);
+        await loginMutation.mutateAsync({ email, password });
       }
+
       // Navigate to home page after successful login
       navigate("/");
       // Reload to update the authentication state
       window.location.reload();
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message || "An error occurred.");
-      } else {
-        setError("An error occurred.");
-      }
+      setError(getErrorMessage(err));
     }
   };
+
+  const isLoading = registerMutation.isPending || loginMutation.isPending;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -88,9 +81,10 @@ export default function LoginPage() {
           />
           <button
             type="submit"
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md"
+            disabled={isLoading}
+            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md disabled:bg-blue-400 disabled:cursor-not-allowed"
           >
-            {isRegister ? "Register" : "Login"}
+            {isLoading ? "Loading..." : isRegister ? "Register" : "Login"}
           </button>
         </form>
         <p className="text-center">

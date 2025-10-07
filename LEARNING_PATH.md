@@ -133,7 +133,16 @@ Choose the right database for the right job. Not all data is relational.
 
 Manage the complexity of having many services.
 
-**Action:** Place an API Gateway in front of your services to act as a single entry point. Implement rate limiting on the gateway.
+**Action:** Place an API Gateway in front of your services to act as a single entry point. Implement rate limiting on the gateway. ✅ **COMPLETED**
+
+**Relay API Implementation:**
+
+- ✅ API Gateway with rate limiting (token bucket algorithm, Redis-backed)
+- ✅ Per-user and per-IP rate limiting
+- ✅ Endpoint-specific configurations
+- ✅ 429 error handling with Retry-After headers
+- ✅ Prometheus metrics for rate limit monitoring
+- 📖 See [RATE_LIMITING_GUIDE.md](RATE_LIMITING_GUIDE.md)
 
 **Key Concepts & Technologies:**
 
@@ -185,7 +194,7 @@ Use specialized tools to solve specific, complex problems efficiently.
 - **Consistent Hashing:** Used in load balancers and distributed databases
 - **Bloom Filters:** Probabilistic check for set membership
 - **Geohashing:** For geospatial indexing (e.g., Redis GEO commands, PostGIS)
-- **Rate Limiting Algorithms:** Token Bucket, Leaky Bucket, Sliding Window
+- **Rate Limiting Algorithms:** Token Bucket ✅ (Relay API), Leaky Bucket, Sliding Window
 
 ### 3. Advanced Distributed Systems Concepts
 
@@ -371,17 +380,34 @@ For a principal engineer, how you build is as important as what you build.
 - **Concept:** Automating the entire process from commit to deployment
 - **Key Optimizations:** Build caching, parallelizing E2E tests, deploying Storybook for pull request reviews, running bundle size analysis on every change
 
-### 6. Robust Testing & Quality Strategy
+### 6. Robust Testing & Quality Strategy ✅ **IMPLEMENTED**
 
 A comprehensive strategy to ensure application quality without slowing down development.
 
-#### The Testing Pyramid (for Frontend)
+**Status:** 70% Complete (Backend fully tested, Frontend pending)
+
+#### Backend Testing ✅ **COMPLETE** (155 tests)
+
+- **Unit Tests:** Vitest - 108 tests for business logic (JWT, bcrypt, caching, validation)
+- **Integration Tests:** Vitest - 19 tests for database & Redis operations
+- **E2E Tests:** Playwright - 28 API tests for complete user flows
+- **Security Tests:** SQL injection prevention, authentication flows
+- **Performance Tests:** Cache effectiveness verification (20x speedup)
+
+**Implementation Details:**
+
+- Test files: `services/*/src/__tests__/*.test.ts`
+- E2E tests: `e2e-tests/tests/*.spec.ts`
+- Documentation: `TESTING.md`, `TEST_QUICK_START.md`
+- CI/CD ready with Docker dependencies
+
+#### Frontend Testing ❌ **TODO**
 
 - **Unit Tests:** Test individual functions and components in isolation (Jest, Vitest, React Testing Library)
 - **Integration Tests:** Test how multiple components work together
 - **End-to-End (E2E) Tests:** Test critical user flows in a real browser (Cypress, Playwright)
 
-#### Additional Testing Strategies
+#### Additional Testing Strategies ❌ **TODO**
 
 - **Visual Regression Testing:** Automatically detect unintended visual changes by comparing screenshots of components before and after code changes (Chromatic, Percy)
 - **Contract Testing:** Ensure that the frontend's expectations of an API response match what the backend actually provides, preventing breakages during independent deployments (Pact)

@@ -88,13 +88,22 @@ pnpm dev
 Entry point for all client requests with:
 
 - JWT authentication & validation
+- **Rate limiting** (token bucket algorithm, Redis-backed) ⭐ NEW
 - Request routing to microservices
 - Circuit breaker pattern (Opossum)
 - Retry logic with exponential backoff
 - CORS handling
 - Distributed tracing
 
-**Technology:** Express.js, Axios, OpenTelemetry
+**Technology:** Express.js, Axios, OpenTelemetry, Redis
+
+**Rate Limiting:**
+
+- Per-user limits (authenticated requests)
+- Per-IP limits (all requests)
+- Endpoint-specific configurations
+- 429 error responses with Retry-After headers
+- See [RATE_LIMITING_GUIDE.md](RATE_LIMITING_GUIDE.md) for details
 
 ---
 

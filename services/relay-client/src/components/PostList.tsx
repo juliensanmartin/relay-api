@@ -11,12 +11,14 @@ interface PostListProps {
   posts: Post[];
   onUpvote: (postId: number) => void;
   isLoggedIn: boolean;
+  isUpvoting?: boolean;
 }
 
 export default function PostList({
   posts,
   onUpvote,
   isLoggedIn,
+  isUpvoting = false,
 }: PostListProps) {
   if (posts.length === 0) {
     return (
@@ -36,7 +38,8 @@ export default function PostList({
           <div className="flex items-center w-full">
             <button
               onClick={() => onUpvote(post.id)}
-              className="mr-4 flex flex-col items-center hover:text-blue-600 transition-colors"
+              disabled={isUpvoting}
+              className="mr-4 flex flex-col items-center hover:text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title={isLoggedIn ? "Upvote" : "Login to upvote"}
             >
               <span className="text-2xl">▲</span>
