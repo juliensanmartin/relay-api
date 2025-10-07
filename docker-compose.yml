@@ -35,6 +35,23 @@ services:
     networks:
       - relay-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - relay-network
+
   auth-service:
     build:
       context: .
@@ -81,8 +98,11 @@ services:
       - DB_HOST=postgres
       - DB_DATABASE=relay_db
       - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - relay-network
@@ -168,3 +188,4 @@ networks:
 volumes:
   postgres_data:
   grafana-storage:
+  redis_data:

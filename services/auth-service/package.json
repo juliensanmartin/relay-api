@@ -6,7 +6,12 @@
   "type": "commonjs",
   "scripts": {
     "start": "ts-node --require ./node_modules/@relay/tracing/dist/index.js --transpile-only src/index.ts",
-    "dev": "SERVICE_NAME=auth-service nodemon --exec 'ts-node --require ./node_modules/@relay/tracing/dist/index.js' src/index.ts | pino-pretty"
+    "dev": "SERVICE_NAME=auth-service nodemon --exec 'ts-node --require ./node_modules/@relay/tracing/dist/index.js' src/index.ts | pino-pretty",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run --testPathPattern=\\.unit\\.test\\.ts$",
+    "test:integration": "vitest run --testPathPattern=\\.integration\\.test\\.ts$",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@relay/tracing": "workspace:^",
@@ -26,9 +31,13 @@
     "@types/express": "^4.17.17",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/pg": "^8.15.5",
+    "@types/supertest": "^6.0.2",
+    "@vitest/coverage-v8": "^2.0.0",
     "nodemon": "^3.0.1",
     "pino-pretty": "^13.1.1",
+    "supertest": "^7.0.0",
     "ts-node": "^10.9.1",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "vitest": "^2.0.0"
   }
 }

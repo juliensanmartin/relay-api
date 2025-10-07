@@ -2,3 +2,4 @@
 packages:
   - "services/*"
   - "packages/*"
+  - "e2e-tests"

@@ -11,7 +11,12 @@
     "dev:notification": "pnpm --filter @relay/notification-service dev",
     "dev:client": "pnpm --filter @relay/relay-client dev",
     "build": "pnpm -r build",
-    "clean": "pnpm -r clean && rm -rf node_modules"
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm -r test:unit",
+    "test:integration": "pnpm -r test:integration",
+    "test:e2e": "pnpm --filter @relay/e2e-tests test",
+    "test:coverage": "pnpm -r test:coverage"
   },
   "keywords": [
     "microservices",
@@ -21,8 +26,11 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@playwright/test": "^1.45.0",
     "@types/node": "^24.6.0",
+    "@vitest/coverage-v8": "^2.0.0",
     "concurrently": "^9.2.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^2.0.0"
   }
 }
